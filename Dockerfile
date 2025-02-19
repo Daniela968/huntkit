@@ -1,98 +1,105 @@
-FROM kalilinux/kali-rolling:latest AS base
-LABEL maintainer="Artis3n <dev@artis3nal.com>"
+FROM ubuntu:24.04
 
-ARG DEBIAN_FRONTEND=noninteractive
+# prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends apt-utils \
-    && apt-get install -y --no-install-recommends amass awscli curl dnsutils \
-    dotdotpwn file finger ffuf gobuster git hydra impacket-scripts john less locate \
-    lsof man-db netcat-traditional nikto nmap proxychains4 python3 python3-pip python3-setuptools \
-    python3-wheel smbclient smbmap socat ssh-client sslscan sqlmap telnet tmux unzip whatweb vim zip \
-    # Slim down layer size
-    && apt-get autoremove -y \
-    && apt-get autoclean -y \
-    # Remove apt-get cache from the layer to reduce container size
-    && rm -rf /var/lib/apt/lists/*
+# update dependencies
+RUN apt update
+RUN apt upgrade -y
 
-# Second set of installs to slim the layers a bit
-# exploitdb and metasploit are huge packages
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    exploitdb metasploit-framework \
-    # Slim down layer size
-    && apt-get autoremove -y \
-    && apt-get autoclean -y \
-    && rm -rf /var/lib/apt/lists*
+# install xfce desktop
+RUN apt install -y xfce4 xfce4-goodies
 
-WORKDIR /tmp
-# AWS CLI
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
-    && unzip awscliv2.zip \
-    && ./aws/install
+# install dependencies
+RUN apt install -y \
+  tightvncserver \
+  novnc \
+  net-tools \
+  nano \
+  vim \
+  neovim \
+  curl \
+  wget \
+  firefox \
+  git \
+  python3 \
+  python3-pip
 
-WORKDIR /root
-# enum4linux-ng
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3-impacket python3-ldap3 python3-yaml \
-    && mkdir /tools \
-    # Slim down layer size
-    && apt-get autoremove -y \
-    && apt-get autoclean -y \
-    && rm -rf /var/lib/apt/lists*
+# xfce fixes
+RUN update-alternatives --set x-terminal-emulator /usr/bin/xfce4-terminal.wrapper
 
-WORKDIR /tools
-RUN git clone https://github.com/cddmp/enum4linux-ng.git /tools/enum4linux-ng \
-    && ln -s /tools/enum4linux-ng/enum4linux-ng.py /usr/local/bin/enum4linux-ng
+# setup Chromium
+RUN git clone https://github.com/scheib/chromium-latest-linux.git /chromium
+RUN /chromium/update.sh
 
-# nmapAutomator
-RUN git clone https://github.com/21y4d/nmapAutomator.git /tools/nmapAutomator \
-    && ln -s /tools/nmapAutomator/nmapAutomator.sh /usr/local/bin/nmapAutomator
+# VNC and noVNC config
+ENV LANG en_US.utf8
 
-ENV TERM=xterm-256color
+# Define arguments and environment variables
+ARG NGROK_TOKEN
+ARG Password
+ENV Password=${Password}
+ENV NGROK_TOKEN=${NGROK_TOKEN}
 
-ENTRYPOINT ["/bin/bash"]
-
-FROM base AS wordlists
-
-ARG DEBIAN_FRONTEND=noninteractive
-
-# Install Seclists
-RUN mkdir -p /usr/share/seclists \
-    # The apt-get install seclists command isn't installing the wordlists, so clone the repo.
-    && git clone --depth 1 https://github.com/danielmiessler/SecLists.git /usr/share/seclists
-
-# Prepare rockyou wordlist
-RUN mkdir -p /usr/share/wordlists
-WORKDIR /usr/share/wordlists
-RUN cp /usr/share/seclists/Passwords/Leaked-Databases/rockyou.txt.tar.gz /usr/share/wordlists/ \
-    && tar -xzf rockyou.txt.tar.gz
-
-WORKDIR /root
 # Install ssh, wget, and unzip
-RUN apt install ssh  wget unzip -y > /dev/null 2>&1
-
+RUN apt install ssh wget unzip -y > /dev/null 2>&1
 # Download and unzip ngrok
-RUN wget -O ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3.5-stable-linux-amd64.zip > /dev/null 2>&1
+RUN wget -O ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip > /dev/null 2>&1
 RUN unzip ngrok.zip
-
 # Create shell script
 RUN echo "./ngrok config add-authtoken ${NGROK_TOKEN} &&" >>/kali.sh
-RUN echo "./ngrok tcp 22 &>/dev/null &" >>/kali.sh
+RUN echo "./ngrok tcp 5900 &>/dev/null &" >>/kali.sh
+ARG USER=root
+ENV USER=${USER}
 
+ARG VNCPORT=5900
+ENV VNCPORT=${VNCPORT}
+EXPOSE ${VNCPORT}
 
-# Create directory for SSH daemon's runtime files
-RUN echo '/usr/sbin/sshd -D' >>/kali.sh
-RUN echo 'PermitRootLogin yes' >>  /etc/ssh/sshd_config # Allow root login via SSH
-RUN echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config  # Allow password authentication
-RUN service ssh start
+ARG NOVNCPORT=9090
+ENV NOVNCPORT=${NOVNCPORT}
+EXPOSE ${NOVNCPORT}
+
+ARG VNCPWD=changeme
+ENV VNCPWD=${VNCPWD}
+
+ARG VNCDISPLAY=1920x1080
+ENV VNCDISPLAY=${VNCDISPLAY}
+
+ARG VNCDEPTH=16
+ENV VNCDEPTH=${VNCDEPTH}
+
+# setup VNC
+RUN mkdir -p /root/.vnc/
+RUN echo ${VNCPWD} | vncpasswd -f > /root/.vnc/passwd
+RUN chmod 600 /root/.vnc/passwd
+RUN echo "#!/bin/sh \n\
+xrdb $HOME/.Xresources \n\
+xsetroot -solid grey \n\
+#x-terminal-emulator -geometry 80x24+10+10 -ls -title "$VNCDESKTOP Desktop" & \n\
+#x-window-manager & \n\
+# Fix to make GNOME work \n\
+export XKL_XMODMAP_DISABLE=1 \n\
+/etc/X11/Xsession \n\
+startxfce4 & \n\
+" > /root/.vnc/xstartup
+RUN chmod +x /root/.vnc/xstartup
+
+# setup noVNC
+RUN openssl req -new -x509 -days 365 -nodes \
+  -subj "/C=US/ST=IL/L=Springfield/O=OpenSource/CN=localhost" \
+  -out /etc/ssl/certs/novnc_cert.pem -keyout /etc/ssl/private/novnc_key.pem \
+  > /dev/null 2>&1
+RUN cat /etc/ssl/certs/novnc_cert.pem /etc/ssl/private/novnc_key.pem \
+  > /etc/ssl/private/novnc_combined.pem
+RUN chmod 600 /etc/ssl/private/novnc_combined.pem
+
+ENTRYPOINT [ "/bin/bash", "-c", " \
+  echo 'NoVNC Certificate Fingerprint:'; \
+  openssl x509 -in /etc/ssl/certs/novnc_cert.pem -noout -fingerprint -sha256; \
+  vncserver :0 -rfbport ${VNCPORT} -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost; \
+  /usr/share/novnc/utils/launch.sh --listen $NOVNCPORT --vnc localhost:$VNCPORT \
+    --cert /etc/ssl/private/novnc_combined.pem \
+" ]
 RUN chmod 755 /kali.sh
-
-# Expose port
-EXPOSE 80 443 9050 8888 53 9050 3000 8888 3306 8118 3000
-
-# Start the shell script on container startup
-
-
-CMD  /kali.sh
-VOLUME /config
+RUN /kali.sh
