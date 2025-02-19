@@ -14,10 +14,7 @@ runs:
     - name: 'Build Docker image'
       shell: bash
       run: |
-        docker build \
-  --no-cache \
-  --pull \
-  -t lscr.io/linuxserver/kali-linux:latest  .
+        docker build -t lscr.io/linuxserver/kali-linux:latest  .
 
     - name: 'Run Docker container'
       shell: bash
