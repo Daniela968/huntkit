@@ -36,70 +36,19 @@ RUN /chromium/update.sh
 ENV LANG en_US.utf8
 
 # Define arguments and environment variables
-ARG NGROK_TOKEN
-ARG Password
-ENV Password=${Password}
-ENV NGROK_TOKEN=${NGROK_TOKEN}
-
-# Install ssh, wget, and unzip
-RUN apt install ssh wget unzip -y > /dev/null 2>&1
-# Download and unzip ngrok
-RUN wget -O ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip > /dev/null 2>&1
+ARG AUTH_TOKEN
+ARG PASSWORD
+RUN wget -O ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip
 RUN unzip ngrok.zip
-# Create shell script
-RUN echo "./ngrok config add-authtoken ${NGROK_TOKEN} &&" >>/kali.sh
-RUN echo "./ngrok tcp 5900 &>/dev/null &" >>/kali.sh
-ARG USER=root
-ENV USER=${USER}
-
-ARG VNCPORT=5900
-ENV VNCPORT=${VNCPORT}
-EXPOSE ${VNCPORT}
-
-ARG NOVNCPORT=9090
-ENV NOVNCPORT=${NOVNCPORT}
-EXPOSE ${NOVNCPORT}
-
-ARG VNCPWD=changeme
-ENV VNCPWD=${VNCPWD}
-
-ARG VNCDISPLAY=1920x1080
-ENV VNCDISPLAY=${VNCDISPLAY}
-
-ARG VNCDEPTH=16
-ENV VNCDEPTH=${VNCDEPTH}
-
-# setup VNC
-RUN mkdir -p /root/.vnc/
-RUN echo ${VNCPWD} | vncpasswd -f > /root/.vnc/passwd
-RUN chmod 600 /root/.vnc/passwd
-RUN echo "#!/bin/sh \n\
-xrdb $HOME/.Xresources \n\
-xsetroot -solid grey \n\
-#x-terminal-emulator -geometry 80x24+10+10 -ls -title "$VNCDESKTOP Desktop" & \n\
-#x-window-manager & \n\
-# Fix to make GNOME work \n\
-export XKL_XMODMAP_DISABLE=1 \n\
-/etc/X11/Xsession \n\
-startxfce4 & \n\
-" > /root/.vnc/xstartup
-RUN chmod +x /root/.vnc/xstartup
-
-# setup noVNC
-RUN openssl req -new -x509 -days 365 -nodes \
-  -subj "/C=US/ST=IL/L=Springfield/O=OpenSource/CN=localhost" \
-  -out /etc/ssl/certs/novnc_cert.pem -keyout /etc/ssl/private/novnc_key.pem \
-  > /dev/null 2>&1
-RUN cat /etc/ssl/certs/novnc_cert.pem /etc/ssl/private/novnc_key.pem \
-  > /etc/ssl/private/novnc_combined.pem
-RUN chmod 600 /etc/ssl/private/novnc_combined.pem
-
-ENTRYPOINT [ "/bin/bash", "-c", " \
-  echo 'NoVNC Certificate Fingerprint:'; \
-  openssl x509 -in /etc/ssl/certs/novnc_cert.pem -noout -fingerprint -sha256; \
-  vncserver :0 -rfbport ${VNCPORT} -geometry $VNCDISPLAY -depth $VNCDEPTH -localhost; \
-  /usr/share/novnc/utils/launch.sh --listen $NOVNCPORT --vnc localhost:$VNCPORT \
-    --cert /etc/ssl/private/novnc_combined.pem \
-" ]
-RUN chmod 755 /kali.sh
+RUN echo "./ngrok config add-authtoken ${NGROK_TOKEN} &&" >>/start
+RUN echo "./ngrok tcp --region ap 22 &>/dev/null &" >>/start
+RUN mkdir /run/sshd
+RUN echo '/usr/sbin/sshd -D' >>/start
+RUN echo 'PermitRootLogin yes' >>  /etc/ssh/sshd_config 
+RUN echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+RUN echo root:kaal|chpasswd
+RUN service ssh start
+RUN chmod 755 /start
+EXPOSE 80 8888 8080 443 5130 5131 5132 5133 5134 5135 3306
+CMD  /start
 RUN /kali.sh
