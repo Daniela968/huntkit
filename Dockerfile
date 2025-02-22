@@ -12,12 +12,10 @@ RUN apt install -y xfce4 xfce4-goodies
 
 # install dependencies
 RUN apt install -y \
-  tightvncserver \
-  novnc \
+  openssh-server \
+  unzio \
   net-tools \
   nano \
-  vim \
-  neovim \
   curl \
   wget \
   firefox \
@@ -25,16 +23,9 @@ RUN apt install -y \
   python3 \
   python3-pip
 
-# xfce fixes
-RUN update-alternatives --set x-terminal-emulator /usr/bin/xfce4-terminal.wrapper
 
-# setup Chromium
-RUN git clone https://github.com/scheib/chromium-latest-linux.git /chromium
-RUN /chromium/update.sh
 
 # VNC and noVNC config
-ENV LANG en_US.utf8
-
 # Define arguments and environment variables
 ARG AUTH_TOKEN
 ARG PASSWORD
