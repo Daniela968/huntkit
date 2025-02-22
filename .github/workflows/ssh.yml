@@ -1,35 +1,16 @@
-name: 'SSH4Me'
-author: 'jisan09'
-description: 'Build SSH tunnel using ngrok over workflow'
+name: 'Run SSH4Me'
+on:
+  workflow_dispatch:
 
-runs:
-  using: 'composite'
-  steps:
-    - name: 'Set up Docker'
-      shell: bash
-      run: |
-        curl -fsSL https://get.docker.com -o get-docker.sh
-        sudo sh get-docker.sh
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: 'Run Docker container'
-      shell: bash
-      run: docker run -d \
-  --name=kali-linux \
-  --security-opt seccomp=unconfined `#optional` \
-  -e PUID=1000 \
-  -e PGID=1000 \
-  -e TZ=Etc/UTC \
-  -e SUBFOLDER=/ `#optional` \
-  -e TITLE="Kali Linux" `#optional` \
-  -p 3000:3000 \
-  -p 3001:3001 \
-  -v /path/to/data:/config \
-  -v /var/run/docker.sock:/var/run/docker.sock `#optional` \
-  --device /dev/dri:/dev/dri `#optional` \
-  --shm-size="1gb" `#optional` \
-  --restart unless-stopped \
-  lscr.io/linuxserver/kali-linux:latest
-
-branding:
-  icon: 'terminal'
-  color: 'gray-dark'
+      - name: Run SSH4Me Action
+        uses: Jisan09/SSH4Me@main
+        env:
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+          PASSWORD: ${{ secrets.PASSWORD }}
